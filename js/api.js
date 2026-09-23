@@ -6,7 +6,7 @@
 
 // "" nếu mở app qua chính server FastAPI (http://localhost:8000).
 // Nếu serve FE riêng (VD Live Server :5500) thì đổi thành "http://localhost:8000".
-const API_BASE = "https://btc-locket-demo.onrender.com/";
+const API_BASE = "https://btc-locket-demo.onrender.com";
 
 const USER_NAME_KEY = "locket_user_name";
 const DEFAULT_USER_NAME = "Người trải nghiệm";
