@@ -133,7 +133,8 @@
             object-fit: cover;
         }
 
-        .camera-video { transform: scaleX(-1); }
+        /* Chỉ lật gương khi JS gắn class .mirrored (cam trước); cam sau giữ chiều thật */
+        .camera-video.mirrored { transform: scaleX(-1); }
 
         .preview-caption-input {
             position: absolute;

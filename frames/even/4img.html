@@ -2,16 +2,47 @@
 <html lang="vi">
 <head>
     <meta charset="UTF-8">
-    <title>Khung 4 ảnh</title>
+    <title>Khung 4 ảnh — film</title>
     <style>html, body { margin: 0; padding: 0; background: #000; height: 100%; }</style>
 </head>
 <body>
-    <!-- Grid 2x2 -->
-    <div class="frame" style="position: relative; width: 100%; height: 100%; background: #000000;">
-        <div class="fs" data-slot="0" style="position: absolute; left: 0%; top: 0%; width: 50%; height: 50%; overflow: hidden;"></div>
-        <div class="fs" data-slot="1" style="position: absolute; left: 50%; top: 0%; width: 50%; height: 50%; overflow: hidden;"></div>
-        <div class="fs" data-slot="2" style="position: absolute; left: 0%; top: 50%; width: 50%; height: 50%; overflow: hidden;"></div>
-        <div class="fs" data-slot="3" style="position: absolute; left: 50%; top: 50%; width: 50%; height: 50%; overflow: hidden;"></div>
+    <!-- Grid 2x2 trong viền film trắng -->
+    <div class="frame" style="position: relative; width: 100%; height: 100%; background-color: #000000;">
+
+        <!-- 4 ô ảnh 2x2 -->
+        <div class="fs" data-slot="0" style="position: absolute; left: 7%; top: 6%; width: 42.5%; height: 43.3%; overflow: hidden;"></div>
+        <div class="fs" data-slot="1" style="position: absolute; left: 50.5%; top: 6%; width: 42.5%; height: 43.3%; overflow: hidden;"></div>
+        <div class="fs" data-slot="2" style="position: absolute; left: 7%; top: 50.7%; width: 42.5%; height: 43.3%; overflow: hidden;"></div>
+        <div class="fs" data-slot="3" style="position: absolute; left: 50.5%; top: 50.7%; width: 42.5%; height: 43.3%; overflow: hidden;"></div>
+
+        <!-- Viền trắng đậm bao ngoài -->
+        <div class="deco" data-type="rect" style="position: absolute; left: 5.5%; top: 4.5%; width: 89%; height: 91%;"
+             data-stroke="#f5f5f5" data-stroke-width="6" data-radius="18"></div>
+
+        <!-- Ngang giữa -->
+        <div class="deco" data-type="rect" style="position: absolute; left: 5.5%; top: 49.7%; width: 89%; height: 0.7%;"
+             data-fill="#f5f5f5"></div>
+        <!-- Dọc giữa -->
+        <div class="deco" data-type="rect" style="position: absolute; left: 49.65%; top: 4.5%; width: 0.7%; height: 91%;"
+             data-fill="#f5f5f5"></div>
+
+        <!-- Chữ script cạnh khung trái -->
+        <div class="deco" data-type="text" style="position: absolute; left: 1%; top: 44%; width: 3%; height: 12%;"
+             data-text="Locket Cam" data-font="'Brush Script MT', 'Segoe Script', cursive" data-size="34"
+             data-color="#f5f5f5" data-align="center" data-rotate="-90" data-italic="true"></div>
+
+        <!-- Lỗ film cạnh trái -->
+        <div class="deco" data-type="holes" style="position: absolute; left: 1.2%; top: 0%; width: 2.2%; height: 100%;"
+             data-side="left" data-count="9" data-hole="12" data-gap="62" data-color="#f5f5f5"></div>
+
+        <!-- Lỗ film cạnh phải -->
+        <div class="deco" data-type="holes" style="position: absolute; left: 96.6%; top: 0%; width: 2.2%; height: 100%;"
+             data-side="left" data-count="9" data-hole="12" data-gap="62" data-color="#f5f5f5"></div>
+
+        <!-- Ngày ở chân khung -->
+        <div class="deco" data-type="text" style="position: absolute; left: 10%; top: 94.8%; width: 80%; height: 4%;"
+             data-text="{{date}}" data-font="'Courier New', monospace" data-size="22"
+             data-color="#f5f5f5" data-align="center" data-spacing="4"></div>
     </div>
 </body>
 </html>

@@ -132,19 +132,40 @@ if (navCameraBtn) {
 // =========================
 // WEBCAM
 // =========================
-async function startCamera(videoElement) {
+let currentFacing = 'user'; // 'user' = camera trước, 'environment' = camera sau
+
+// Video element đang hoạt động theo kích thước màn hình hiện tại
+function activeVideoElement() {
+    return document.getElementById(window.innerWidth >= 992 ? 'webcam-desktop' : 'webcam-mobile');
+}
+
+async function startCamera(videoElement = activeVideoElement(), facing = currentFacing) {
     if (!videoElement) return;
     try {
-        if (!currentStream || !currentStream.active) {
-            currentStream = await navigator.mediaDevices.getUserMedia({
-                video: { facingMode: 'user', aspectRatio: 1 },
-                audio: false,
-            });
-        }
+        // Luôn đóng stream cũ trước khi mở stream mới (bắt buộc khi đổi camera)
+        stopCamera();
+        currentStream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: facing, aspectRatio: 1 },
+            audio: false,
+        });
         videoElement.srcObject = currentStream;
+        // Chỉ cam trước mới xem dạng gương; cam sau chiếu chiều thật
+        videoElement.classList.toggle('mirrored', facing === 'user');
         await videoElement.play();
     } catch (err) {
-        console.warn('Chưa cấp quyền webcam hoặc mở qua file://:', err);
+        console.warn('Không mở được camera:', err);
+        // Máy không có cam sau → tự quay lại cam trước thay vì chết im
+        if (facing === 'environment') {
+            currentFacing = 'user';
+            try {
+                currentStream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: 'user', aspectRatio: 1 },
+                    audio: false,
+                });
+                videoElement.srcObject = currentStream;
+                await videoElement.play();
+            } catch (_) { /* bỏ qua */ }
+        }
     }
 }
 
@@ -164,7 +185,7 @@ function getUI(isDesktop) {
         previewFrame: document.getElementById(isDesktop ? 'desktop-preview-frame' : 'mobile-preview-frame'),
         canvas: document.getElementById(isDesktop ? 'desktop-canvas' : 'mobile-canvas'),
         shutterBtn: document.getElementById(isDesktop ? 'desktop-shutter-btn' : 'mobile-shutter-btn'),
-        cancelBtn: document.getElementById(isDesktop ? 'desktop-cancel-btn' : 'mobile-cancel-btn'),
+        cancelBtn: document.getElementById(isDesktop ? 'desktop-cancel-flip' : 'mobile-cancel-flip-btn'),
         exportBtn: document.getElementById(isDesktop ? 'desktop-export-btn' : 'mobile-export-btn'),
         captionInput: document.getElementById(isDesktop ? 'desktop-caption-input' : 'mobile-caption-input'),
         video: document.getElementById(isDesktop ? 'webcam-desktop' : 'webcam-mobile'),
@@ -199,8 +220,13 @@ function enterPreviewMode({ blob, dataUrl }) {
         ui.exportBtn.innerHTML = '<i class="bi bi-grid-1x2-fill"></i>';
     }
     if (ui.cancelBtn) {
+        // Preview mode → nút biến thành X đỏ để thoát
         ui.cancelBtn.innerHTML = '<i class="bi bi-x-lg text-danger fs-5"></i>';
+        ui.cancelBtn.title = 'Hủy ảnh';
     }
+
+    // Camera ẩn đi rồi nên không cần lật gương nữa
+    ui.video?.classList.remove('mirrored');
 }
 
 function exitPreviewMode() {
@@ -224,7 +250,9 @@ function exitPreviewMode() {
         ui.exportBtn.innerHTML = '';
     }
     if (ui.cancelBtn) {
+        // Quay lại camera mode → trả về icon đổi camera
         ui.cancelBtn.innerHTML = '<i class="bi bi-arrow-repeat"></i>';
+        ui.cancelBtn.title = 'Đổi camera trước/sau';
     }
 
     startCamera(ui.video);
@@ -251,9 +279,11 @@ document.querySelectorAll('.shutter-trigger').forEach((btn) => {
         tempCanvas.height = ui.video.videoHeight || 400;
         const ctx = tempCanvas.getContext('2d');
 
-        // Lật ngang cho giống gương tự nhiên
-        ctx.translate(tempCanvas.width, 0);
-        ctx.scale(-1, 1);
+        // Chỉ lật gương với cam trước; cam sau chụp thế nào giữ nguyên vậy
+        if (currentFacing === 'user') {
+            ctx.translate(tempCanvas.width, 0);
+            ctx.scale(-1, 1);
+        }
         ctx.drawImage(ui.video, 0, 0, tempCanvas.width, tempCanvas.height);
 
         // Blob để upload (FormData), dataURL chỉ để preview
@@ -454,6 +484,32 @@ desktopCamBtn?.addEventListener('click', () => {
         isDesktopCamOn = true;
     }
 });
+
+const flipBtn = document.getElementById(window.innerWidth >= 992 ? 'desktop-cancel-flip' : 'mobile-cancel-flip-btn');
+
+async function switchCamera() {
+    if (!currentStream) return; // camera chưa bật thì không có gì để chuyển
+
+    // Đảo cam trước ↔ cam sau
+    currentFacing = currentFacing === 'environment' ? 'user' : 'environment';
+
+    // Visual feedback: khoá nút trong lúc đang đổi camera
+    flipBtn.disabled = true;
+    flipBtn.classList.add('opacity-75');
+    try {
+        await startCamera(activeVideoElement(), currentFacing);
+    } finally {
+        flipBtn.disabled = false;
+        flipBtn.classList.remove('opacity-75');
+    }
+}
+
+flipBtn?.addEventListener('click', () =>{
+    if (isPreviewMode) {
+        exitPreviewMode();
+    } else {
+        switchCamera();
+    }});
 
 // =========================
 // KHỞI TẠO
