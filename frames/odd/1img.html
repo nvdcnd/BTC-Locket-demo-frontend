@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <title>Khung 1 ảnh</title>
+    <style>html, body { margin: 0; padding: 0; background: #000; height: 100%; }</style>
+</head>
+<body>
+    <!-- Root .frame + các .fs có inline position %: compositor đọc và vẽ lên canvas -->
+    <div class="frame" style="position: relative; width: 100%; height: 100%; background: #000000;">
+        <div class="fs" data-slot="0" style="position: absolute; left: 0%; top: 0%; width: 100%; height: 100%; overflow: hidden;"></div>
+    </div>
+</body>
+</html>
