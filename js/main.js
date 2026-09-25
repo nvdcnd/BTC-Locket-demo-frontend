@@ -5,13 +5,16 @@
 // =====================================================
 
 import { getFeed, uploadPost, getUserName, setUserName, hasUserName } from './api.js';
+import { compressImageToTarget, formatBytes, MAX_UPLOAD_BYTES } from './image-compression.js';
 import { initFrameExporter, openExportMenu } from './frames.js';
 
 let isFetching = false;
 let currentStream = null;
 let isPreviewMode = false;
-let capturedBlob = null;       // Blob ảnh chuẩn bị đăng (FormData)
-let capturedDataUrl = null;    // dataURL chỉ để preview
+let isUploading = false;
+let capturedBlob = null;       // Blob ảnh đã nén, chuẩn bị đăng (FormData)
+let capturedDataUrl = null;    // URL ảnh chỉ để preview
+let capturedObjectUrl = null;  // object URL cần revoke khi đổi/xoá preview
 let nextCursor = null;         // cursor của trang kế (null = hết)
 let hasNext = true;
 
@@ -192,10 +195,21 @@ function getUI(isDesktop) {
     };
 }
 
-function enterPreviewMode({ blob, dataUrl }) {
+function enterPreviewMode({ blob, dataUrl, objectUrl = false }) {
     isPreviewMode = true;
+
+    // Không giữ object URL của preview cũ: tránh rò rỉ bộ nhớ khi người dùng chụp nhiều ảnh.
+    if (capturedObjectUrl) {
+        URL.revokeObjectURL(capturedObjectUrl);
+        capturedObjectUrl = null;
+    }
+
     capturedBlob = blob;
     capturedDataUrl = dataUrl;
+    capturedObjectUrl = objectUrl ? dataUrl : null;
+
+    // Không giữ camera chạy khi người dùng đang xem preview; tiết kiệm pin và giảm quyền riêng tư.
+    stopCamera();
 
     const ui = getUI(window.innerWidth >= 992);
 
@@ -229,10 +243,31 @@ function enterPreviewMode({ blob, dataUrl }) {
     ui.video?.classList.remove('mirrored');
 }
 
+async function prepareImageForPreview(blob, { sourceLabel = 'ảnh' } = {}) {
+    if (!blob) throw new Error('Không có ảnh để xử lý!');
+    showToast(`Đang kiểm tra và nén ${sourceLabel}...`, true);
+
+    // Đây là entry point duy nhất cho cả file và camera trước khi bước vào preview.
+    // compressImageToTarget chỉ trả về Blob đã đạt <= 50 KiB.
+    const compressed = await compressImageToTarget(blob);
+    const previewUrl = URL.createObjectURL(compressed.blob);
+    enterPreviewMode({ blob: compressed.blob, dataUrl: previewUrl, objectUrl: true });
+
+    const detail = compressed.originalSize === compressed.finalSize
+        ? `đã đạt giới hạn (${formatBytes(compressed.finalSize)})`
+        : `${formatBytes(compressed.originalSize)} → ${formatBytes(compressed.finalSize)} (tối đa ${formatBytes(MAX_UPLOAD_BYTES)})`;
+    showToast(`Ảnh sẵn sàng: ${detail}.`, true);
+    return compressed;
+}
+
 function exitPreviewMode() {
     isPreviewMode = false;
     capturedBlob = null;
     capturedDataUrl = null;
+    if (capturedObjectUrl) {
+        URL.revokeObjectURL(capturedObjectUrl);
+        capturedObjectUrl = null;
+    }
 
     const ui = getUI(window.innerWidth >= 992);
 
@@ -262,9 +297,9 @@ function exitPreviewMode() {
 // CHỤP & UPLOAD
 // =========================
 document.querySelectorAll('.shutter-trigger').forEach((btn) => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', async () => {
         if (isPreviewMode) {
-            handleSendPost();
+            await handleSendPost();
             return;
         }
 
@@ -274,30 +309,36 @@ document.querySelectorAll('.shutter-trigger').forEach((btn) => {
             return;
         }
 
-        const tempCanvas = document.createElement('canvas');
-        tempCanvas.width = ui.video.videoWidth || 400;
-        tempCanvas.height = ui.video.videoHeight || 400;
-        const ctx = tempCanvas.getContext('2d');
+        // Khoá shutter trong lúc encode để tránh tạo nhiều preview cùng lúc.
+        btn.disabled = true;
+        try {
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = ui.video.videoWidth || 400;
+            tempCanvas.height = ui.video.videoHeight || 400;
+            const ctx = tempCanvas.getContext('2d');
+            if (!ctx) throw new Error('Trình duyệt không tạo được canvas camera.');
 
-        // Chỉ lật gương với cam trước; cam sau chụp thế nào giữ nguyên vậy
-        if (currentFacing === 'user') {
-            ctx.translate(tempCanvas.width, 0);
-            ctx.scale(-1, 1);
+            // Chỉ lật gương với cam trước; cam sau chụp thế nào giữ nguyên vậy
+            if (currentFacing === 'user') {
+                ctx.translate(tempCanvas.width, 0);
+                ctx.scale(-1, 1);
+            }
+            ctx.drawImage(ui.video, 0, 0, tempCanvas.width, tempCanvas.height);
+
+            // Camera cũng đi qua đúng pipeline nén như file; không tạo base64 trung gian.
+            const rawBlob = await new Promise((resolve, reject) => {
+                tempCanvas.toBlob((blob) => {
+                    if (blob) resolve(blob);
+                    else reject(new Error('Không tạo được ảnh từ camera!'));
+                }, 'image/jpeg', 0.9);
+            });
+            await prepareImageForPreview(rawBlob, { sourceLabel: 'ảnh camera' });
+        } catch (err) {
+            console.error('Camera capture/compression error:', err);
+            showToast(err.message || 'Không tạo được ảnh từ camera!', false);
+        } finally {
+            btn.disabled = false;
         }
-        ctx.drawImage(ui.video, 0, 0, tempCanvas.width, tempCanvas.height);
-
-        // Blob để upload (FormData), dataURL chỉ để preview
-        tempCanvas.toBlob(
-            (blob) => {
-                if (!blob) {
-                    showToast('Không tạo được ảnh từ camera!', false);
-                    return;
-                }
-                enterPreviewMode({ blob, dataUrl: tempCanvas.toDataURL('image/jpeg', 0.9) });
-            },
-            'image/jpeg',
-            0.9
-        );
     });
 });
 
@@ -306,12 +347,18 @@ document.querySelectorAll('.upload-btn-trigger').forEach((btn) => {
 });
 
 const fileInput = document.getElementById('file-input');
-fileInput?.addEventListener('change', (e) => {
+fileInput?.addEventListener('change', async (e) => {
     const file = e.target.files?.[0];
-    if (!file) return;
-    // Dùng thẳng File (là Blob) — không cần FileReader base64 nữa
-    enterPreviewMode({ blob: file, dataUrl: URL.createObjectURL(file) });
     e.target.value = '';
+    if (!file) return;
+
+    try {
+        // File cũng đi qua cùng hàm nén; preview và payload upload dùng cùng một Blob.
+        await prepareImageForPreview(file, { sourceLabel: 'ảnh đã chọn' });
+    } catch (err) {
+        console.error('File compression error:', err);
+        showToast(err.message || 'Không xử lý được ảnh đã chọn!', false);
+    }
 });
 
 document.querySelectorAll('.action-cancel-btn').forEach((btn) => {
@@ -328,7 +375,7 @@ document.querySelectorAll('.export-btn-trigger').forEach((btn) => {
 });
 
 async function handleSendPost() {
-    if (!capturedBlob) return;
+    if (!capturedBlob || isUploading) return;
 
     const ui = getUI(window.innerWidth >= 992);
     const caption = ui.captionInput ? ui.captionInput.value : '';
@@ -347,6 +394,10 @@ async function handleSendPost() {
         mainScrollContainer?.scrollTo({ top: window.innerHeight, behavior: 'smooth' });
     }
 
+    isUploading = true;
+    document.querySelectorAll('.shutter-trigger').forEach((button) => { button.disabled = true; });
+    showToast('Đang đăng ảnh lên ImageKit...', true);
+
     try {
         const image = await uploadPost({ blob, caption });
         prependFeedCard(image);
@@ -354,6 +405,9 @@ async function handleSendPost() {
     } catch (err) {
         console.error('Upload error:', err);
         showToast(err.message || 'Gửi ảnh thất bại!', false);
+    } finally {
+        isUploading = false;
+        document.querySelectorAll('.shutter-trigger').forEach((button) => { button.disabled = false; });
     }
 }
 

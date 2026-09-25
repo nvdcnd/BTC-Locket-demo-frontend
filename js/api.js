@@ -4,6 +4,10 @@
 // POST /upload/image/  → multipart/form-data { image, description?, name? }
 // =====================================================
 
+import { assertUploadableImage, MAX_UPLOAD_BYTES } from './image-compression.js';
+
+export { MAX_UPLOAD_BYTES };
+
 // "" nếu mở app qua chính server FastAPI (http://localhost:8000).
 // Nếu serve FE riêng (VD Live Server :5500) thì đổi thành "http://localhost:8000".
 const API_BASE = "https://btc-locket-demo.onrender.com";
@@ -59,9 +63,13 @@ export async function getFeed({ cursor = null, size = 10 } = {}) {
  * @returns object image vừa tạo: { id, url, name, description, created_at }
  */
 export async function uploadPost({ blob, caption = "", name } = {}) {
+    // Check lần cuối ở biên API: bảo đảm cả file, camera và caller khác đều không bypass giới hạn.
+    assertUploadableImage(blob);
+
     const fd = new FormData();
     // key "image" phải khớp tham số UploadFile của backend
-    fd.append("image", blob, `photo_${Date.now()}.jpg`);
+    const extension = blob.type === 'image/webp' ? 'webp' : blob.type === 'image/png' ? 'png' : 'jpg';
+    fd.append("image", blob, `photo_${Date.now()}.${extension}`);
     if (caption) fd.append("description", caption);
     fd.append("name", name || getUserName() || DEFAULT_USER_NAME);
 
